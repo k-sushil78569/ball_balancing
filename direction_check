@@ -1,17 +1,17 @@
 import RPi.GPIO as GPIO
 import time
 
-# Setup
+# --- GPIO Pin Setup ---
 GPIO.setmode(GPIO.BCM)
 servo_pins = [18, 23, 24]  # arm1, arm2, arm3
 
-# Initial equilibrium angles
-equilibrium_angles = [100, 100, 105]  # degrees for arm1, arm2, arm3
+# Equilibrium positions (calibrated)
+equilibrium_angles = [100, 100, 105]  # degrees
 
-# Tilt offset (you can tune this for stronger/weaker tilt)
-tilt = 10
+# Tilt offset (can increase if needed)
+tilt = 10  # degrees
 
-# Direction offsets for the 8 directions: [arm1_offset, arm2_offset, arm3_offset]
+# 8 tilt directions with servo angle offsets (Δ)
 direction_offsets = {
     "North":         [ 0, -tilt,  tilt],
     "North-East":    [-tilt, -tilt, tilt],
@@ -23,42 +23,46 @@ direction_offsets = {
     "North-West":    [ tilt, -tilt, -tilt],
 }
 
-# Setup pins and start PWM
+# --- Initialize PWM at 50Hz for each servo ---
 pwms = []
 for pin in servo_pins:
     GPIO.setup(pin, GPIO.OUT)
-    pwm = GPIO.PWM(pin, 50)  # 50 Hz
-    pwm.start(0)
+    pwm = GPIO.PWM(pin, 50)  # 50Hz for servo
+    pwm.start(0)             # Start with 0% duty cycle
     pwms.append(pwm)
 
+# --- Function to Set Angle ---
 def set_servo_angle(pwm, angle):
-    duty = 2.5 + (angle / 180.0) * 10
+    duty = 2.5 + (angle / 180.0) * 10  # Convert angle to duty cycle
     pwm.ChangeDutyCycle(duty)
-    time.sleep(0.4)
-    pwm.ChangeDutyCycle(0)  # Prevent jitter
+    time.sleep(0.5)  # Allow servo to reach position (adjust if needed)
+    # Do NOT stop PWM (we want servo to hold position)
 
-def move_platform(angles):
+# --- Move All Servos to Target Angles ---
+def move_platform(target_angles):
     for i in range(3):
-        set_servo_angle(pwms[i], angles[i])
+        set_servo_angle(pwms[i], target_angles[i])
 
+# --- Run the Tilt Test Sequence ---
 def try_platform_slope():
     print("Moving to equilibrium...")
     move_platform(equilibrium_angles)
     time.sleep(1)
 
     for direction, offsets in direction_offsets.items():
-        test_angles = [
+        target_angles = [
             equilibrium_angles[i] + offsets[i] for i in range(3)
         ]
-        print(f"Tilt: {direction} -> {test_angles}")
-        move_platform(test_angles)
-        time.sleep(1)
+        print(f"Tilt → {direction}: {target_angles}")
+        move_platform(target_angles)
+        time.sleep(5)  # Stay in this tilt for 5 seconds
         print("Returning to equilibrium...")
         move_platform(equilibrium_angles)
-        time.sleep(0.5)
+        time.sleep(1)
 
+# --- Main ---
 try:
-    print("Starting platform slope test...")
+    print("Starting platform tilt test...")
     try_platform_slope()
     print("Test completed.")
 
@@ -66,6 +70,7 @@ except KeyboardInterrupt:
     print("Interrupted by user.")
 
 finally:
+    print("Cleaning up...")
     for pwm in pwms:
-        pwm.stop()
+        pwm.stop()  # Stop PWM safely on exit
     GPIO.cleanup()
