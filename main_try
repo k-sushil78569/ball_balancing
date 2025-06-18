@@ -233,7 +233,7 @@ while True:
     print(f"A1: {A1:.2f}, A2: {A2:.2f}, A3: {A3:.2f}")
 
     
-    output_angles = [A1+115, A2+110, A3+110]
+    output_angles = [A1+90, A2+90, A3+90]
     for i,pwm in enumerate(servos):
         if not math.isnan(output_angles[i]):
             angle_df = max(80, min(150, output_angles[i]))
