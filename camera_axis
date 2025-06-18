@@ -12,7 +12,7 @@ print("Max resolution:", picam2.sensor_resolution)
 picam2.configure(picam2.create_preview_configuration(main={"size": picam2.sensor_resolution}))
 picam2.start()
 
-# === Mouse callback to show HSV under cursor ===
+# === Mouse callback to inspect HSV ===
 def show_hsv_on_click(event, x, y, flags, param):
     if event == cv2.EVENT_MOUSEMOVE:
         hsv_img = param
@@ -24,40 +24,59 @@ cv2.namedWindow("Ball Tracking")
 cv2.namedWindow("HSV")
 cv2.setMouseCallback("HSV", show_hsv_on_click, None)
 
+# === Rotation angle in degrees ===
+angle = 18  # Set this to any custom angle like 16 or 24
+
 while True:
-    # === Capture and process frame ===
+    # === Capture frame and convert RGB to BGR ===
     frame = picam2.capture_array()
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-    frame = cv2.rotate(frame, cv2.ROTATE_180)  # Rotate frame if needed
 
-    # Resize for display (processing remains full-res)
+    # === Rotate frame by custom angle with canvas expansion ===
+    (h, w) = frame.shape[:2]
+    center = (w // 2, h // 2)
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+
+    # Calculate new bounding dimensions to avoid cropping
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+    new_w = int((h * sin) + (w * cos))
+    new_h = int((h * cos) + (w * sin))
+
+    # Adjust transformation matrix to center the image in new canvas
+    M[0, 2] += (new_w / 2) - center[0]
+    M[1, 2] += (new_h / 2) - center[1]
+
+    # Apply affine transformation (rotation)
+    frame = cv2.warpAffine(frame, M, (new_w, new_h))
+
+    # === Resize for display only ===
     display_frame = cv2.resize(frame, (800, 600))
 
-    # Blur and convert to HSV
+    # === Convert to HSV ===
     blurred = cv2.GaussianBlur(display_frame, (5, 5), 0)
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
-    # Update HSV window's mouse callback
     cv2.setMouseCallback("HSV", show_hsv_on_click, hsv)
 
-    # Create mask for orange ball
+    # === Create HSV mask ===
     mask = cv2.inRange(hsv, lower_orange, upper_orange)
     kernel = np.ones((5, 5), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-    # === Draw Cartesian axis at center ===
-    h, w = display_frame.shape[:2]
-    origin_x = w // 2
-    origin_y = h // 2
+    # === Draw Cartesian axes centered at the middle ===
+    h_disp, w_disp = display_frame.shape[:2]
+    origin_x = w_disp // 2
+    origin_y = h_disp // 2
 
-    cv2.line(display_frame, (origin_x, 0), (origin_x, h), (200, 200, 200), 1)  # Y-axis
-    cv2.line(display_frame, (0, origin_y), (w, origin_y), (200, 200, 200), 1)  # X-axis
+    cv2.line(display_frame, (origin_x, 0), (origin_x, h_disp), (200, 200, 200), 1)  # Y-axis
+    cv2.line(display_frame, (0, origin_y), (w_disp, origin_y), (200, 200, 200), 1)  # X-axis
     cv2.circle(display_frame, (origin_x, origin_y), 5, (0, 255, 255), -1)
     cv2.putText(display_frame, "(0,0)", (origin_x + 10, origin_y - 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
 
-    # === Find and track ball ===
+    # === Detect and annotate ball ===
     contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if contours:
@@ -66,24 +85,21 @@ while True:
         area = cv2.contourArea(c)
 
         if radius > 10 and area > 100:
-            # Draw detected circle
             cv2.circle(display_frame, (int(x), int(y)), int(radius), (0, 255, 0), 2)
             cv2.circle(display_frame, (int(x), int(y)), 5, (0, 0, 255), -1)
 
-            # Convert to center-origin coordinates
+            # Convert to origin-centered coordinates
             x_coord = int(x - origin_x)
             y_coord = int(origin_y - y)  # Flip Y so up is positive
 
-            # Display coordinates
             cv2.putText(display_frame, f"X: {x_coord}, Y: {y_coord}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
-    # === Display frames ===
+    # === Show all frames ===
     cv2.imshow("Ball Tracking", display_frame)
     cv2.imshow("Mask", mask)
     cv2.imshow("HSV", hsv)
 
-    # Quit on 'q' key
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
