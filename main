@@ -1,0 +1,199 @@
+import math
+import time
+import cv2
+import numpy as np
+from picamera2 import Picamera2
+from gpiozero import PWMOutputDevice
+
+# === PID Controller Class ===
+class PID:
+    def __init__(self, K_PID, k, alpha):
+        self.kp, self.ki, self.kd = K_PID      # PID constants
+        self.k = k                             # Gain for final output
+        self.alpha = alpha                     # Low-pass filter smoothing
+        self.last_output_x = 0
+        self.last_output_y = 0
+        self.last_error_x = 0
+        self.last_error_y = 0
+        self.integral_x = 0
+        self.integral_y = 0
+        self.last_time = None
+
+    def compute(self, goal, current_value):
+        # Time difference
+        current_time = time.perf_counter()
+        if self.last_time is None:
+            self.last_time = current_time
+            return 0, 0
+
+        dt = current_time - self.last_time
+
+        # Error calculations
+        error_x = goal[0] - current_value[0]
+        error_y = goal[1] - current_value[1]
+
+        # Integral (accumulated error)
+        self.integral_x += error_x * dt
+        self.integral_y += error_y * dt
+
+        # Derivative (change in error)
+        derivative_x = (error_x - self.last_error_x) / dt
+        derivative_y = (error_y - self.last_error_y) / dt
+
+        # PID formula
+        output_x = self.kp * error_x + self.ki * self.integral_x + self.kd * derivative_x
+        output_y = self.kp * error_y + self.ki * self.integral_y + self.kd * derivative_y
+
+        # Low-pass filter
+        output_x = self.alpha * output_x + (1 - self.alpha) * self.last_output_x
+        output_y = self.alpha * output_y + (1 - self.alpha) * self.last_output_y
+
+        # Convert to polar coordinates (theta, phi)
+        theta = math.degrees(math.atan2(output_y, output_x))
+        if theta < 0:
+            theta += 360
+
+        phi = self.k * math.sqrt(output_x**2 + output_y**2)
+
+        # Store for next iteration
+        self.last_error_x = error_x
+        self.last_error_y = error_y
+        self.last_output_x = output_x
+        self.last_output_y = output_y
+        self.last_time = current_time
+
+        return theta, phi
+
+# === Inverse Kinematics Class ===
+class AngleVal:
+    def __init__(self, theta, phi, ch):
+        self.theta = math.radians(theta)  # Convert to radians
+        self.phi = phi                    # Magnitude
+        self.ch = ch                      # Center height offset
+        # Constants for robot arm geometry
+        self.r = 0.05
+        self.L1 = 0.04
+        self.L2 = 0.06
+        self.X = 0.02
+
+    def calculateH(self):
+        """Calculate target heights for 3 servo arms"""
+        sin_phi = math.sin(math.radians(self.phi))
+        t = self.theta
+        ah1 = self.ch + self.r * math.sin(t) * sin_phi
+        ah2 = self.ch + self.r * math.cos(t + math.radians(30)) * sin_phi
+        ah3 = self.ch - self.r * math.cos(t - math.radians(30)) * sin_phi
+        return ah1, ah2, ah3
+
+    def calculateAlpha(self, y):
+        """Calculate the required angle for a given height using IK"""
+        try:
+            part1 = math.atan2(y, self.X)
+            d = math.sqrt(self.X**2 + y**2)
+            part2 = math.acos((self.X**2 + y**2 + self.L1**2 - self.L2**2) / (2 * self.L1 * d))
+            alpha = part1 - part2
+            return math.degrees(alpha)
+        except ValueError:
+            return float('nan')  # IK error, likely out of range
+
+    def output(self):
+        """Return 3 servo angles based on current theta, phi"""
+        ah1, ah2, ah3 = self.calculateH()
+        A1 = self.calculateAlpha(ah1)
+        A2 = self.calculateAlpha(ah2)
+        A3 = self.calculateAlpha(ah3)
+        return A1, A2, A3
+
+# === Servo Control ===
+def angle_to_duty_cycle(angle):
+    """Convert angle (0-180) to duty cycle (2.5% - 12.5%)"""
+    angle = max(0, min(180, angle))
+    return 2.5 + (angle / 180.0) * 10.0
+
+def set_servo(servo, angle):
+    """Send PWM signal to servo"""
+    duty = angle_to_duty_cycle(angle) / 100.0  # Convert % to [0.0, 1.0]
+    servo.value = duty
+
+# === Main Function ===
+def main():
+    # PID tuning constants
+    K_PID = [0.1, 0.01, 0.02]  # [kp, ki, kd]
+    k = 1.0                    # output gain
+    alpha = 0.5                # low-pass filter alpha
+    ch = 0.03                  # center height of plate
+
+    # Initialize PID controller
+    pid = PID(K_PID, k, alpha)
+
+    # Setup servos (adjust GPIO pins as needed)
+    servo1 = PWMOutputDevice(17, frequency=50)
+    servo2 = PWMOutputDevice(27, frequency=50)
+    servo3 = PWMOutputDevice(22, frequency=50)
+
+    # Setup PiCamera
+    picam2 = Picamera2()
+    picam2.configure(picam2.create_preview_configuration(main={"size": picam2.sensor_resolution}))
+    picam2.start()
+
+    # HSV color range for detecting the orange ball
+    lower_orange = np.array([4, 140, 150])
+    upper_orange = np.array([25, 255, 255])
+
+    while True:
+        # === Capture frame from camera ===
+        frame = picam2.capture_array()
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        h, w = frame.shape[:2]
+        origin_x, origin_y = w // 2, h // 2  # Set origin at center of frame
+
+        # === Process the image ===
+        blurred = cv2.GaussianBlur(frame, (5, 5), 0)
+        hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+
+        # === Create mask for detecting orange ball ===
+        mask = cv2.inRange(hsv, lower_orange, upper_orange)
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        # === Detect contours ===
+        contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        display = cv2.resize(frame.copy(), (800, 600))  # Resize for easier viewing
+
+        if contours:
+            # Get the largest contour (assumed to be the ball)
+            c = max(contours, key=cv2.contourArea)
+            ((x, y), radius) = cv2.minEnclosingCircle(c)
+            area = cv2.contourArea(c)
+
+            if radius > 10 and area > 100:
+                # Convert to coordinate system with origin at center
+                rel_x = int(x - origin_x)
+                rel_y = int(origin_y - y)  # Flip Y to make up positive
+
+                # === PID control to compute tilt direction and strength ===
+                theta, phi = pid.compute((0, 0), (rel_x, rel_y))
+
+                # === Compute servo angles using inverse kinematics ===
+                angles = AngleVal(theta, phi, ch)
+                A1, A2, A3 = angles.output()
+
+                # === Set servos (offset +90 because neutral = 90°) ===
+                set_servo(servo1, A1 + 90)
+                set_servo(servo2, A2 + 90)
+                set_servo(servo3, A3 + 90)
+
+        # === Show camera feed only (for monitoring) ===
+        cv2.imshow("Ball Tracking", display)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # === Cleanup ===
+    picam2.stop()
+    cv2.destroyAllWindows()
+
+# === Entry Point ===
+if __name__ == "__main__":
+    main()
