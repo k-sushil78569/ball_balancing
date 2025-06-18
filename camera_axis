@@ -1,0 +1,92 @@
+from picamera2 import Picamera2
+import cv2
+import numpy as np
+
+# === HSV range for orange TT ball ===
+lower_orange = np.array([4, 140, 150])
+upper_orange = np.array([25, 255, 255])
+
+# === Initialize PiCamera2 with full resolution ===
+picam2 = Picamera2()
+print("Max resolution:", picam2.sensor_resolution)
+picam2.configure(picam2.create_preview_configuration(main={"size": picam2.sensor_resolution}))
+picam2.start()
+
+# === Mouse callback to show HSV under cursor ===
+def show_hsv_on_click(event, x, y, flags, param):
+    if event == cv2.EVENT_MOUSEMOVE:
+        hsv_img = param
+        if hsv_img is not None and y < hsv_img.shape[0] and x < hsv_img.shape[1]:
+            hsv_pixel = hsv_img[y, x]
+            print(f"HSV at ({x}, {y}): {hsv_pixel}")
+
+cv2.namedWindow("Ball Tracking")
+cv2.namedWindow("HSV")
+cv2.setMouseCallback("HSV", show_hsv_on_click, None)
+
+while True:
+    # === Capture and process frame ===
+    frame = picam2.capture_array()
+    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    frame = cv2.rotate(frame, cv2.ROTATE_180)  # Rotate frame if needed
+
+    # Resize for display (processing remains full-res)
+    display_frame = cv2.resize(frame, (800, 600))
+
+    # Blur and convert to HSV
+    blurred = cv2.GaussianBlur(display_frame, (5, 5), 0)
+    hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+
+    # Update HSV window's mouse callback
+    cv2.setMouseCallback("HSV", show_hsv_on_click, hsv)
+
+    # Create mask for orange ball
+    mask = cv2.inRange(hsv, lower_orange, upper_orange)
+    kernel = np.ones((5, 5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    # === Draw Cartesian axis at center ===
+    h, w = display_frame.shape[:2]
+    origin_x = w // 2
+    origin_y = h // 2
+
+    cv2.line(display_frame, (origin_x, 0), (origin_x, h), (200, 200, 200), 1)  # Y-axis
+    cv2.line(display_frame, (0, origin_y), (w, origin_y), (200, 200, 200), 1)  # X-axis
+    cv2.circle(display_frame, (origin_x, origin_y), 5, (0, 255, 255), -1)
+    cv2.putText(display_frame, "(0,0)", (origin_x + 10, origin_y - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+
+    # === Find and track ball ===
+    contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        c = max(contours, key=cv2.contourArea)
+        ((x, y), radius) = cv2.minEnclosingCircle(c)
+        area = cv2.contourArea(c)
+
+        if radius > 10 and area > 100:
+            # Draw detected circle
+            cv2.circle(display_frame, (int(x), int(y)), int(radius), (0, 255, 0), 2)
+            cv2.circle(display_frame, (int(x), int(y)), 5, (0, 0, 255), -1)
+
+            # Convert to center-origin coordinates
+            x_coord = int(x - origin_x)
+            y_coord = int(origin_y - y)  # Flip Y so up is positive
+
+            # Display coordinates
+            cv2.putText(display_frame, f"X: {x_coord}, Y: {y_coord}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+
+    # === Display frames ===
+    cv2.imshow("Ball Tracking", display_frame)
+    cv2.imshow("Mask", mask)
+    cv2.imshow("HSV", hsv)
+
+    # Quit on 'q' key
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# === Cleanup ===
+cv2.destroyAllWindows()
+picam2.stop()
