@@ -228,7 +228,7 @@ while True:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
     Current_value = (x_coord,y_coord)
     theta ,phi=compute_pid(Goal, Current_value , pid_state)
-    ch=12
+    ch=13.5
     A1, A2, A3 = compute_output_angles(theta, phi, ch)
     print(f"A1: {A1:.2f}, A2: {A2:.2f}, A3: {A3:.2f}")
 
