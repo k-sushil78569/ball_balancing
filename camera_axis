@@ -25,7 +25,7 @@ cv2.namedWindow("HSV")
 cv2.setMouseCallback("HSV", show_hsv_on_click, None)
 
 # === Rotation angle in degrees ===
-angle = 18  # Set this to any custom angle like 16 or 24
+angle = 13  # Set this to any custom angle like 16 or 24
 
 while True:
     # === Capture frame and convert RGB to BGR ===
