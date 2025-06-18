@@ -8,13 +8,20 @@ import time
 # --- GPIO Setup ---
 GPIO.setmode(GPIO.BCM)
 servo_pins = [18, 23, 24]  # arm1, arm2, arm3
+equilibrium_angles = [115, 110, 110]
+def angle_to_duty_cycle(angle):
+    
+    return 2.5 + (angle / 180.0) * 10.0
+
+# === Initialize servos only once ===
+servos = []
 for pin in servo_pins:
     GPIO.setup(pin, GPIO.OUT)
     pwm = GPIO.PWM(pin, 50)  # 50Hz for standard servos
     pwm.start(angle_to_duty_cycle(equilibrium_angles[servo_pins.index(pin)]))
     servos.append(pwm)
 
-equilibrium_angles = [115, 110, 110]
+
 
 # ----- PID CONSTANTS (GLOBAL) -----
 kp = 1.0     # Proportional gain
@@ -37,6 +44,8 @@ Goal = (0,0)
 # ----- PID COMPUTE FUNCTION -----
 def compute_pid(Goal, Current_value, pid_state):
     global kp, ki, kd, k, alpha
+    if Current_value==(0,0):
+        return 0,0
 
     current_time = time.perf_counter()
 
@@ -198,7 +207,9 @@ while True:
 
     # === Detect and annotate ball ===
     contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
+    x_coord=0
+    y_coord=0
+    
     if contours:
         c = max(contours, key=cv2.contourArea)
         ((x, y), radius) = cv2.minEnclosingCircle(c)
@@ -209,13 +220,14 @@ while True:
             cv2.circle(display_frame, (int(x), int(y)), 5, (0, 0, 255), -1)
 
             # Convert to origin-centered coordinates
+            
             x_coord = int(x - origin_x)
             y_coord = int(origin_y - y)  # Flip Y so up is positive
 
             cv2.putText(display_frame, f"X: {x_coord}, Y: {y_coord}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-    Current_value = (x_xoord,y_coord)
-    theta ,phi=compute_pid(Goal, current value , pid_state)
+    Current_value = (x_coord,y_coord)
+    theta ,phi=compute_pid(Goal, Current_value , pid_state)
     ch=0.1
     A1, A2, A3 = compute_output_angles(theta, phi, ch)
     print(f"A1: {A1:.2f}, A2: {A2:.2f}, A3: {A3:.2f}")
@@ -224,8 +236,10 @@ while True:
     output_angles = [A1+115, A2+110, A3+110]
     for i,pwm in enumerate(servos):
         if not math.isnan(output_angles[i]):
-            duty = angle_to_duty_cycle(output_angles[i])
+            angle_df = max(80, min(150, output_angles[i]))
+            duty = angle_to_duty_cycle(angle_df)
             pwm.ChangeDutyCycle(duty)
+    time.sleep(0.05)
         
 
     # === Show all frames ===
@@ -238,4 +252,7 @@ while True:
 
 # === Cleanup ===
 cv2.destroyAllWindows()
+for pwm in servos:
+    pwm.stop()
+GPIO.cleanup()
 picam2.stop()
