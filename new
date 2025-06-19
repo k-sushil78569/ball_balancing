@@ -8,7 +8,7 @@ import time
 # --- GPIO Setup ---
 GPIO.setmode(GPIO.BCM)
 servo_pins = [18, 23, 24]  # arm1, arm2, arm3
-equilibrium_angles = [115, 110, 110]
+equilibrium_angles = [115, 110, 110] #need to check
 def angle_to_duty_cycle(angle):
     
     return 2.5 + (angle / 180.0) * 10.0
@@ -25,8 +25,8 @@ for pin in servo_pins:
 
 # ----- PID CONSTANTS (GLOBAL) -----
 kp = 1.0     # Proportional gain
-ki = 10     # Integral gain
-kd = 5    # Derivative gain
+ki = 0     # Integral gain
+kd = 0    # Derivative gain
 k = 0.008      # Output magnitude gain
 alpha = 1  # Low-pass filter coefficient
 
@@ -40,11 +40,11 @@ pid_state = {
     'integral_y': 0.0,
     'last_time': None
 }
-Goal = (0,0)
+#Goal = (0,0)
 # ----- PID COMPUTE FUNCTION -----
 def compute_pid(Goal, Current_value, pid_state):
     global kp, ki, kd, k, alpha
-    if Current_value==(0,0):
+    if Current_value==Goal:
         return 0,0
 
     current_time = time.perf_counter()
@@ -58,7 +58,7 @@ def compute_pid(Goal, Current_value, pid_state):
         dt = 1e-6  # Avoid division by zero
 
     # Calculate error
-    error_x = Goal[0] - Current_value[0]
+    error_x = Current_value[0] - Goal[0]
     error_y = Goal[1] - Current_value[1]
 
     # Update integral
@@ -95,15 +95,15 @@ def compute_pid(Goal, Current_value, pid_state):
 
 
 # --------- CONSTANTS ---------
-r = 16.7     # Radius or arm reach
-L1 = 10    # Link 1 length
-L2 = 12    # Link 2 length
-X = 11.3     # Horizontal offset
+r = 16.7     # Radius or arm reach check
+L1 = 10    # Link 1 length check
+L2 = 12    # Link 2 length check
+X = 11.3     # Horizontal offset check
 
 # --------- FUNCTION: Compute leg heights (ah1, ah2, ah3) ---------
 def calculate_heights(theta_deg, phi_deg, ch):
     theta_rad = math.radians(theta_deg)
-    sin_phi = math.sin(math.radians(phi_deg))
+    sin_phi = math.sin(math.radians(phi_deg*5)) # change max tilt *******
 
     ah1 = ch + r * math.sin(theta_rad) * sin_phi
     ah2 = ch + r * math.cos(theta_rad + math.radians(30)) * sin_phi
@@ -135,10 +135,12 @@ def compute_output_angles(theta_deg, phi_deg, ch):
 lower_orange = np.array([4, 140, 150])
 upper_orange = np.array([25, 255, 255])
 
-# === Initialize PiCamera2 with full resolution ===
+# === Initialize PiCamera2 with full resolution === # i have commented high resolution tio check latency
 picam2 = Picamera2()
 print("Max resolution:", picam2.sensor_resolution)
-picam2.configure(picam2.create_preview_configuration(main={"size": picam2.sensor_resolution}))
+#picam2.configure(picam2.create_preview_configuration(main={"size": picam2.sensor_resolution}))
+config = picam2.create_preview_configuration(main={"size": (320, 240)}, buffer_count=2)
+picam2.configure(config)
 picam2.start()
 
 # === Mouse callback to inspect HSV ===
@@ -154,7 +156,7 @@ cv2.namedWindow("HSV")
 cv2.setMouseCallback("HSV", show_hsv_on_click, None)
 
 # === Rotation angle in degrees ===
-angle = 10  # Set this to any custom angle like 16 or 24
+angle = 0  # Set to change the setup ******
 
 while True:
     # === Capture frame and convert RGB to BGR ===
@@ -162,22 +164,22 @@ while True:
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
     # === Rotate frame by custom angle with canvas expansion ===
-    (h, w) = frame.shape[:2]
+    '''(h, w) = frame.shape[:2]
     center = (w // 2, h // 2)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)'''
 
     # Calculate new bounding dimensions to avoid cropping
-    cos = np.abs(M[0, 0])
+    '''cos = np.abs(M[0, 0])
     sin = np.abs(M[0, 1])
     new_w = int((h * sin) + (w * cos))
-    new_h = int((h * cos) + (w * sin))
+    new_h = int((h * cos) + (w * sin))'''
 
     # Adjust transformation matrix to center the image in new canvas
-    M[0, 2] += (new_w / 2) - center[0]
-    M[1, 2] += (new_h / 2) - center[1]
+    '''M[0, 2] += (new_w / 2) - center[0]
+    M[1, 2] += (new_h / 2) - center[1]'''
 
     # Apply affine transformation (rotation)
-    frame = cv2.warpAffine(frame, M, (new_w, new_h))
+    #frame = cv2.warpAffine(frame, M, (new_w, new_h))
 
     # === Resize for display only ===
     display_frame = cv2.resize(frame, (800, 600))
@@ -196,9 +198,9 @@ while True:
 
     # === Draw Cartesian axes centered at the middle ===
     h_disp, w_disp = display_frame.shape[:2]
-    origin_x = w_disp // 2-31
+    origin_x = w_disp // 2-31 # change to set centre
     origin_y = h_disp // 2-31
-
+    Goal=(origin_x,origin_y)
     cv2.line(display_frame, (origin_x, 0), (origin_x, h_disp), (200, 200, 200), 1)  # Y-axis
     cv2.line(display_frame, (0, origin_y), (w_disp, origin_y), (200, 200, 200), 1)  # X-axis
     cv2.circle(display_frame, (origin_x, origin_y), 5, (0, 255, 255), -1)
@@ -207,8 +209,8 @@ while True:
 
     # === Detect and annotate ball ===
     contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    x_coord=0
-    y_coord=0
+    x_coord=Goal[0]
+    y_coord=Goal[1]
     
     if contours:
         c = max(contours, key=cv2.contourArea)
@@ -221,14 +223,16 @@ while True:
 
             # Convert to origin-centered coordinates
             
-            x_coord = int(x - origin_x)
-            y_coord = int(origin_y - y)  # Flip Y so up is positive
+            '''x_coord = int(x - origin_x)
+            y_coord = int(origin_y - y)  # Flip Y so up is positive'''
+            x_coord=int(x)
+            y_coord=int(y)
 
             cv2.putText(display_frame, f"X: {x_coord}, Y: {y_coord}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
     Current_value = (x_coord,y_coord)
     theta ,phi=compute_pid(Goal, Current_value , pid_state)
-    ch=13.5
+    ch=13.5 # center height from arm horizontal level
     A1, A2, A3 = compute_output_angles(theta, phi, ch)
     print(f"A1: {A1:.2f}, A2: {A2:.2f}, A3: {A3:.2f}")
 
