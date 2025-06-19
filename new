@@ -103,11 +103,22 @@ X = 11.3     # Horizontal offset check
 # --------- FUNCTION: Compute leg heights (ah1, ah2, ah3) ---------
 def calculate_heights(theta_deg, phi_deg, ch):
     theta_rad = math.radians(theta_deg)
-    sin_phi = math.sin(math.radians(phi_deg*5)) # change max tilt *******
+    sin_phi = math.sin(math.radians(phi_deg * 5))  # Change max tilt *******
 
-    ah1 = ch + r * math.sin(theta_rad) * sin_phi
-    ah2 = ch + r * math.cos(theta_rad + math.radians(30)) * sin_phi
-    ah3 = ch - r * math.cos(theta_rad - math.radians(30)) * sin_phi
+    if 90 < theta_deg < 270:
+        ah1 = ch - r * math.sin(theta_rad) * sin_phi
+    else:
+        ah1 = ch + r * math.sin(theta_rad) * sin_phi
+
+    if 30 < theta_deg < 210:
+        ah2 = ch + r * math.cos(theta_rad + math.radians(30)) * sin_phi
+    else:
+        ah2 = ch - r * math.cos(theta_rad + math.radians(30)) * sin_phi
+
+    if 150 < theta_deg < 330:
+        ah3 = ch + r * math.cos(theta_rad - math.radians(30)) * sin_phi
+    else:
+        ah3 = ch - r * math.cos(theta_rad - math.radians(30)) * sin_phi
 
     return ah1, ah2, ah3
 
