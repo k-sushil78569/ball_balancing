@@ -56,3 +56,16 @@ The program handles GPIO and window cleanup automatically upon exit.
 
 - Servo angles are constrained between 80°–150° to prevent damage.
 - PID constants and camera alignment (`theta + 45`) may require tuning.
+
+---
+
+## 🧭 Alignment Note
+
+To align camera view with servo layout:
+
+- Temporarily set `angle = X` in the code and observe the frame.
+- Rotate the frame until Arm 1 aligns with the X-axis.
+- Once aligned, set `angle = 0` and add `theta += X` to compensate for the offset.
+- This ensures calculated tilt matches the real arm directions.
+
+*This is a one-time setup step.*
