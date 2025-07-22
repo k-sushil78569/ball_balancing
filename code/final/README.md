@@ -1,12 +1,23 @@
-Angle_servo calculates the angle input that should be given to the motor based on the pid out put.
+## 📂 File Descriptions (Main Code Folder)
 
-Pid takes in camera output and gives in the pid output
+- **`angle_servo.py`**  
+  ➤ Calculates the servo angles required to tilt the platform, based on the PID output.  
+  ➤ Converts tilt direction (`theta`) and magnitude (`phi`) into servo commands using inverse kinematics.
 
-camera_axis sets the axis such that one arm is oriented towards the x-axis
+- **`pid.py`**  
+  ➤ Takes the ball's position from the camera and computes the PID output.  
+  ➤ Determines how much and in which direction the platform should tilt to bring the ball back to center.
 
-code_camera is the actual code for the camera
+- **`camera_axis.py`**  
+  ➤ Helps align the camera such that one of the servo arms (Arm 1) lies along the X-axis in the camera view.  
+  ➤ This script tells you how much to **virtually rotate** the camera view.  
+  ➤ The camera is **not physically rotated**—only the output angle is adjusted accordingly in the code.  
+  ➤ Also helps align the coordinate center to the actual center of the plate.
 
-main file is the full integrated code for the project ... 
+- **`code_camera.py`**  
+  ➤ Handles real-time video capture and HSV-based ball detection using the PiCamera.
 
-here the camera_axis code gives u how much you should tilt the camera, and only the angle value is added to the angle output buit the camera is not tilted actually
-and also the centre is alligned according to the centre.
+- **`main.py`**  
+  ➤ Fully integrated code that combines camera input, PID control, angle computation, and servo output.  
+  ➤ This is the final script used to run the real-time ball-balancing system.
+
