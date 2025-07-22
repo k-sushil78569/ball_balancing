@@ -77,9 +77,16 @@ def compute_pid(Goal, Current_value, pid_state):
     output_x = alpha * output_x + (1 - alpha) * pid_state['last_output_x']
     output_y = alpha * output_y + (1 - alpha) * pid_state['last_output_y']
 
-    # Calculate angle (theta) and magnitude (phi)
+    # Compute angle of required tilt direction
     theta = math.degrees(math.atan2(output_y, output_x))
-    theta+=45 # you can change the value according to the value got in camera_axis code
+
+    # === Camera-to-Arm Alignment Adjustment ===
+    # To map the visual frame to the mechanical coordinate system:
+    # - Temporarily rotate the frame using the 'angle' variable (currently set to 0).
+    # - Adjust this 'angle' until Arm1 aligns perfectly with the visual X-axis.
+    # - Once aligned (e.g., angle=30), set angle back to 0, and **add that alignment angle** (e.g., +30) here.
+    # - This ensures the direction of tilt matches the servo layout.
+    theta += 30  # Replace 30 with the alignment angle determined visually
     if theta < 0:
         theta += 360
 
