@@ -8,7 +8,7 @@ import time
 # --- GPIO Setup ---
 GPIO.setmode(GPIO.BCM)
 servo_pins = [18, 23, 24]  # arm1, arm2, arm3
-equilibrium_angles = [90, 90, 90] #need to check
+equilibrium_angles = [90, 90, 90] #need to check acc to servo position
 def angle_to_duty_cycle(angle):
     
     return 2.5 + (angle / 180.0) * 10.0
@@ -158,19 +158,8 @@ upper_orange = np.array([25, 255, 255])
 picam2 = Picamera2()
 print("Max resolution:", picam2.sensor_resolution)
 #picam2.configure(picam2.create_preview_configuration(main={"size": picam2.sensor_resolution}))
-#config = picam2.create_preview_configuration(main={"size": (320, 240)}, buffer_count=2)
-#picam2.configure(config)
-
-# Get the full sensor resolution
-full_res = picam2.sensor_resolution
-
-# Set the crop to cover the whole sensor
-picam2.set_controls({"ScalerCrop": (0, 0, full_res[0], full_res[1])})
-
-# Now configure with your low-res output
-config = picam2.create_preview_configuration(main={"size": (320, 240)}, buffer_count=2)
+config = picam2.create_preview_configuration(main={"size": (1280, 720)}, buffer_count=2)
 picam2.configure(config)
-
 picam2.start()
 
 # === Mouse callback to inspect HSV ===
@@ -189,6 +178,7 @@ cv2.setMouseCallback("HSV", show_hsv_on_click, None)
 angle = 0  # offset check to align the arm to x-axis
 
 while True:
+    start_loop = time.time()
     # === Capture frame and convert RGB to BGR ===
     frame = picam2.capture_array()
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -196,20 +186,20 @@ while True:
     # === Rotate frame by custom angle with canvas expansion ===
     '''(h, w) = frame.shape[:2]
     center = (w // 2, h // 2)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)'''
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
 
     # Calculate new bounding dimensions to avoid cropping
-    '''cos = np.abs(M[0, 0])
+    cos = np.abs(M[0, 0])
     sin = np.abs(M[0, 1])
     new_w = int((h * sin) + (w * cos))
-    new_h = int((h * cos) + (w * sin))'''
+    new_h = int((h * cos) + (w * sin))
 
     # Adjust transformation matrix to center the image in new canvas
-    '''M[0, 2] += (new_w / 2) - center[0]
-    M[1, 2] += (new_h / 2) - center[1]'''
+    M[0, 2] += (new_w / 2) - center[0]
+    M[1, 2] += (new_h / 2) - center[1]
 
     # Apply affine transformation (rotation)
-    #frame = cv2.warpAffine(frame, M, (new_w, new_h))
+    frame = cv2.warpAffine(frame, M, (new_w, new_h))'''
 
     # === Resize for display only ===
     display_frame = cv2.resize(frame, (800, 600))
@@ -273,7 +263,7 @@ while True:
             angle_df = max(80, min(150, output_angles[i]))
             duty = angle_to_duty_cycle(angle_df)
             pwm.ChangeDutyCycle(duty)
-    time.sleep(0.8)
+    time.sleep(0.05)
         
 
     # === Show all frames ===
